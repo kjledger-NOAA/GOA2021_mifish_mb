@@ -13,16 +13,16 @@ C) Run blastn on ASVs (post/filtered.seqs.fasta) using ncbi nt database as refer
 - update input/output file paths within blastn.sh, and make a folder for blast outputs (home/kledger/blast/GOA2021_mifish_20241106)
 - blastn parameters: -perc_identity 96 -qcov_hsp_perc 98
 
-- also blast fasta against our custom salmon and gadid reference databases (note: these dbs might need a bit more work...)
-blastn -query dadasnake_20241106/filtered.seqs.fasta -db /genetics/edna/custom_dbs/gadidae_db -out gadidae_results.txt -perc_identity 98 -qcov_hsp_perc 100 -num_threads 10 -outfmt '6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore sscinames staxids'
+(updated dec 30, 2024: also ran blast againsed UPDATED custom salmon and gadid reference databases)
+blastn -query dadasnake_20241106/filtered.seqs.fasta -db /genetics/edna/custom_dbs/gadid_mifish_db_20241227 -out gadidae_results.txt -perc_identity 96 -qcov_hsp_perc 98 -num_threads 10 -outfmt '6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore sscinames staxids'
 
-blastn -query dadasnake_20241106/filtered.seqs.fasta -db /genetics/edna/custom_dbs/oncorhynchus_db -out oncorhynchus_results.txt -perc_identity 98 -qcov_hsp_perc 100 -num_threads 10 -outfmt '6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore sscinames staxids'
+blastn -query dadasnake_20241106/filtered.seqs.fasta -db /genetics/edna/custom_dbs/salmon_mifish_db_20241227 -out oncorhynchus_results.txt -perc_identity 96 -qcov_hsp_perc 96 -num_threads 10 -outfmt '6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore sscinames staxids'
 
 
 Part 2: Taxonomic assignment using blast output - location: eDNA VM (161.55.97.134)
 A) run "part2_taxonomic_assignment_blastn.Rmd"
 
-note: looks pretty good but could likely benefit from additional filtering and grouping of taxa ids made up of distint species 
+note: looks pretty good but could likely benefit from additional filtering and grouping of taxa ids made up of distinct species 
 working document on tax assignment thoughts: https://docs.google.com/document/d/1IwNT3KOPqcSyNkB1Q4D5HayEa8FHgSdr--XiVQwj-N0/edit?usp=sharing
 
 Part 3: Data decontamination - location: eDNA VM (161.55.97.134)

@@ -33,7 +33,7 @@ tax_df <- taxonomy %>%
   group_by(V1, V17) %>% # group by the sequence key and the full taxonomy to reduce duplicate entries
   unique() %>% # doing that reduced the number of entries
   rename(qseqid=V1, perc_id=V3, length=V4, taxonomy=V17) %>% #rename headers
-  filter(perc_id > 98) %>% # blast output includes as low as 96 perc_id, but for now i only care about the top 3%
+  filter(perc_id > 96) %>% # blast output includes as low as 96 perc_id, but for now i only care about the top 2%
   filter(!is.na(taxonomy))
 ```
 
@@ -128,6 +128,8 @@ When a valid name was not found, the presence of a species in the study area was
 spp_range <- spp_range %>%
   mutate(in_range = ifelse(Species == "Sebastes cheni", "no", in_range)) %>%
   mutate(in_range = ifelse(Species == "Ammodytes japonicus", "no", in_range)) %>%
+  mutate(in_range = ifelse(Species == "Sebastiscus vibrantus", "no", in_range)) %>%
+  mutate(in_range = ifelse(Species == "Phoxinus fayollarum", "no", in_range)) %>%
   mutate(in_range = ifelse(Species == "Coregonus steinmanni", "no", in_range)) 
 
 in_range <- spp_range %>%
@@ -140,8 +142,12 @@ in_range <- in_range %>%
   filter(Species != "Oncorhynchus gilae") %>%
   filter(Species != "Acipenser brevirostrum") %>%  #positive control mis-id
   filter(Species != "Clupea harengus") %>%
-  filter(Species != "Microgadus tomcod")
-## likely more could be filtered out here
+  filter(Species != "Microgadus tomcod") %>%
+  filter(Species != "Micropterus salmoides") %>%
+  filter(Species != "Micropterus floridanus") %>%
+  filter(Species != "Rhinogobiops nicholsii") %>% 
+  filter(Species != "Sardinops sagax") 
+## likely more could be filtered out here- but lots of these don't make it into final taxonomic output so will take a closer look later on
 ```
 
 ## keep only the "in range" fish species in the taxon dataframe 
@@ -217,7 +223,8 @@ to_remove_low_perc_hits <- match_99_to_remove_low_perc_hits %>%
   bind_rows(match_lessthan99_to_remove_low_perc_hits)
 
 keepers <- seq_id_diff %>%
-  anti_join(to_remove_low_perc_hits)
+  anti_join(to_remove_low_perc_hits) %>%
+  filter(top_perc > 98)
 ```
 
 ## so now determine whether ASVs should be assigned to genus, family, order, etc. 
@@ -357,7 +364,7 @@ gadidae <- read.table("/home/kimberly.ledger/GOA2021_mifish_mb/data/gadidae_resu
   group_by(V1, V2) %>% # group by the sequence key and the full taxonomy to reduce duplicate entries
   unique() %>% # doing that reduced the number of entries
   rename(qseqid=V1, species=V2, perc_id=V3, length=V4) %>% #rename headers
-  filter(perc_id > 98) %>%
+  filter(perc_id > 96) %>%
   filter(species != "Arctogadus_glacialis") %>%  ## polar cod is not in GOA so going to remove it
   filter(species != "Boreogadus_saida")  ## also removing arctic cod, very low chances of getting it in GOA 
 ```
@@ -381,12 +388,45 @@ seq_id_diff_gadidae <- gadidae %>%
 seq_id_diff_gadidae
 ```
 
-since there are very few basepair difference among species, let's go with species within 0.5% of the top match 
+** if there is a sequence that is >99% match, then keep just the sequences within 0.5%  
+** if there is NOT a >99% match, keep the top 1% 
+
+## ASVs with >99% match 
 ```{r}
-keepers_gadidae <- seq_id_diff_gadidae %>%
-  filter(diff < 0.5)
+match_99_gadidae <- seq_id_diff_gadidae %>%
+  filter(top_perc >= 99) %>%
+  select(qseqid) %>%
+  unique()
+
+match_lessthan99_gadidae <- seq_id_diff_gadidae %>%
+  filter(top_perc < 99) %>%
+  select(qseqid) %>%
+  unique()
 ```
 
+
+## Figure out which differences are outside the threshold and eliminate those first
+```{r}
+# filter out any taxa that are >1% less matching identity than the top taxonomic hit for a given sequence
+match_99_to_remove_low_perc_hits_gadidae <- seq_id_diff_gadidae %>%
+  ungroup() %>%
+  filter(qseqid %in% match_99_gadidae$qseqid) %>%
+  group_by(qseqid) %>%
+  filter(diff > 0.5)
+
+match_lessthan99_to_remove_low_perc_hits_gadidae <- seq_id_diff_gadidae %>%
+  ungroup() %>%
+  filter(qseqid %in% match_lessthan99_gadidae$qseqid) %>%
+  group_by(qseqid) %>%
+  filter(diff > 1)
+
+to_remove_low_perc_hits_gadidae <- match_99_to_remove_low_perc_hits_gadidae %>%
+  bind_rows(match_lessthan99_to_remove_low_perc_hits_gadidae)
+
+keepers_gadidae <- seq_id_diff_gadidae %>%
+  anti_join(to_remove_low_perc_hits_gadidae) %>%
+  filter(top_perc > 98)
+```
 
 ## so now determine whether ASVs should be assigned to genus, family, order, etc. 
 ```{r}
@@ -472,7 +512,7 @@ salmon <- read.table("/home/kimberly.ledger/GOA2021_mifish_mb/data/oncorhynchus_
   group_by(V1, V2) %>% # group by the sequence key and the full taxonomy to reduce duplicate entries
   unique() %>% # doing that reduced the number of entries
   rename(qseqid=V1, species=V2, perc_id=V3, length=V4) %>% #rename headers
-  filter(perc_id > 98)
+  filter(perc_id > 96)
 ```
 
 ## rank the hits by % identity
@@ -494,12 +534,44 @@ seq_id_diff_salmon <- salmon %>%
 seq_id_diff_salmon
 ```
 
-since there are very few basepair difference among species, let's go with species within 0.5% of the top match 
+** if there is a sequence that is >99% match, then keep just the sequences within 0.5%  
+** if there is NOT a >99% match, keep the top 1% 
+
+## ASVs with >99% match 
 ```{r}
-keepers_salmon <- seq_id_diff_salmon %>%
-  filter(diff < 0.5)
+match_99_salmon <- seq_id_diff_salmon %>%
+  filter(top_perc >= 99) %>%
+  select(qseqid) %>%
+  unique()
+
+match_lessthan99_salmon <- seq_id_diff_salmon %>%
+  filter(top_perc < 99) %>%
+  select(qseqid) %>%
+  unique()
 ```
 
+## Figure out which differences are outside the threshold and eliminate those first
+```{r}
+# filter out any taxa that are >1% less matching identity than the top taxonomic hit for a given sequence
+match_99_to_remove_low_perc_hits_salmon <- seq_id_diff_salmon %>%
+  ungroup() %>%
+  filter(qseqid %in% match_99_salmon$qseqid) %>%
+  group_by(qseqid) %>%
+  filter(diff > 0.5)
+
+match_lessthan99_to_remove_low_perc_hits_salmon <- seq_id_diff_salmon %>%
+  ungroup() %>%
+  filter(qseqid %in% match_lessthan99_salmon$qseqid) %>%
+  group_by(qseqid) %>%
+  filter(diff > 1)
+
+to_remove_low_perc_hits_salmon <- match_99_to_remove_low_perc_hits_salmon %>%
+  bind_rows(match_lessthan99_to_remove_low_perc_hits_salmon)
+
+keepers_salmon <- seq_id_diff_salmon %>%
+  anti_join(to_remove_low_perc_hits_salmon) %>%
+  filter(top_perc > 98)
+```
 
 ## so now determine whether ASVs should be assigned to genus, family, order, etc. 
 ```{r}

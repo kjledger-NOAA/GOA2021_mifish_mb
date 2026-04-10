@@ -1,0 +1,631 @@
+---
+title: "salmon and gadid seqs to add to custom ref db"
+output: html_document
+date: "2024-12-27"
+---
+
+libraries
+```{r}
+library(tidyverse)
+rename <- dplyr::rename
+```
+
+load the sample IDs 
+```{r}
+ids <- read.csv("/home/kimberly.ledger/GOA2021_mifish_mb/data/building_custom_gadid_salmon_db/gadid_salmon_mifish_refdb.csv")
+```
+
+
+load asv table
+```{r}
+asv_table <- read_rds("/home/kimberly.ledger/GOA2021_mifish_mb/data/building_custom_gadid_salmon_db/filtered.seqTab.RDS") %>%
+  select(!Row.names)
+
+#transpose 
+asv_table <- data.frame(t(asv_table))
+
+#set column names to be ASV# 
+colnames(asv_table) <- asv_table["ASV",]
+
+#remove row that has ASV#
+asv_table <- asv_table[!rownames(asv_table) %in% c('ASV'), ]
+
+#make sure reads are numbers
+# Convert all character columns to numeric
+for (col in names(asv_table)) {
+  asv_table[[col]] <- as.numeric(asv_table[[col]])
+}
+
+#make make sample ID a column 
+asv_table$Sample_ID <- rownames(asv_table)
+
+asv_table <- asv_table %>%
+  mutate(across(everything(), ~ gsub("-", "_", .))) %>%
+  select(Sample_ID, everything()) 
+```
+
+join
+```{r}
+asv_table <- asv_table %>%
+  left_join(ids, by = "Sample_ID") %>%
+  select(Sample_ID, taxon, everything()) %>%
+  mutate(across(-(1:2), as.numeric))
+```
+
+# Walleye pollock
+
+pull out species that need seqs to be added to the ref db 
+```{r}
+wp <- asv_table %>%
+  filter(taxon == "Gadus chalcogrammus") %>%
+  select(where(~ !is.numeric(.) || (is.numeric(.) && sum(.) > 0)))
+```
+
+are these asvs unique to pollock?
+```{r}
+wp_asvs <- wp %>%
+  select(starts_with("ASV")) %>%
+  colnames()
+```
+
+```{r}
+temp1 <- asv_table %>%
+  select(2, all_of(wp_asvs)) %>%
+  group_by(taxon) %>%
+  summarise(across(ASV_01:ASV_33, sum, na.rm = TRUE)) %>%
+  t() %>%
+  as.data.frame()
+
+colnames(temp1) <- temp1[1,]  
+temp1 <- temp1[-1,]  
+
+temp2 <- temp1 %>%
+  mutate(across(everything(), as.numeric)) %>%
+  mutate(total = rowSums(across(where(is.numeric)))) %>%
+  mutate(prop_wp = `Gadus chalcogrammus`/total)
+```
+
+```{r}
+wp_filtered <- temp2 %>%
+  filter(prop_wp > 0.1) %>%    ## at least 10% of reads come from the target species
+  filter(total > 100) %>%          ## at least 100 reads 
+  rownames()
+```
+
+subset fasta to be just the pollock
+```{r}
+# Load the necessary libraries
+library(Biostrings)
+
+# Define the input and output file paths
+fasta_file <- "/home/kimberly.ledger/GOA2021_mifish_mb/data/building_custom_gadid_salmon_db/filtered.seqs.fasta"
+output_file <- "/home/kimberly.ledger/GOA2021_mifish_mb/outputs/fastas_for_custom_db/gadus_chalcogrammus.fasta"
+
+# Read the FASTA file
+fasta_seqs <- readDNAStringSet(fasta_file)
+
+# Filter the FASTA sequences based on the ASV headers
+wp_seqs <- fasta_seqs[names(fasta_seqs) %in% wp_filtered]
+
+# Write the filtered sequences to a new FASTA file
+writeXStringSet(wp_seqs, filepath = output_file)
+```
+
+
+# Pacific cod
+
+pull out species that need seqs to be added to the ref db 
+```{r}
+pc <- asv_table %>%
+  filter(taxon == "Gadus macrocephalus") %>%
+  select(where(~ !is.numeric(.) || (is.numeric(.) && sum(.) > 0)))
+```
+
+are these asvs unique?
+```{r}
+pc_asvs <- pc %>%
+  select(starts_with("ASV")) %>%
+  colnames()
+```
+
+```{r}
+temp1 <- asv_table %>%
+  select(2, all_of(pc_asvs)) %>%
+  group_by(taxon) %>%
+  summarise(across(ASV_04:ASV_32, sum, na.rm = TRUE)) %>%
+  t() %>%
+  as.data.frame()
+
+colnames(temp1) <- temp1[1,]  
+temp1 <- temp1[-1,]  
+
+temp2 <- temp1 %>%
+  mutate(across(everything(), as.numeric)) %>%
+  mutate(total = rowSums(across(where(is.numeric)))) %>%
+  mutate(prop = `Gadus macrocephalus`/total)
+```
+
+```{r}
+filtered <- temp2 %>%
+  filter(prop > 0.1) %>%    ## at least 10% of reads come from the target species
+  filter(total > 100) %>%          ## at least 100 reads 
+  rownames()
+```
+
+subset fasta 
+```{r}
+# Load the necessary libraries
+library(Biostrings)
+
+# Define the input and output file paths
+fasta_file <- "/home/kimberly.ledger/GOA2021_mifish_mb/data/building_custom_gadid_salmon_db/filtered.seqs.fasta"
+output_file <- "/home/kimberly.ledger/GOA2021_mifish_mb/outputs/fastas_for_custom_db/gadus_macrocephalus.fasta"
+
+# Read the FASTA file
+fasta_seqs <- readDNAStringSet(fasta_file)
+
+# Filter the FASTA sequences based on the ASV headers
+seqs <- fasta_seqs[names(fasta_seqs) %in% filtered]
+
+# Write the filtered sequences to a new FASTA file
+writeXStringSet(seqs, filepath = output_file)
+```
+
+# Polar cod
+
+pull out species that need seqs to be added to the ref db 
+```{r}
+polc <- asv_table %>%
+  filter(taxon == "Arctogadus glacialis") %>%
+  select(where(~ !is.numeric(.) || (is.numeric(.) && sum(.) > 0)))
+```
+
+are these asvs unique?
+```{r}
+polc_asvs <- polc %>%
+  select(starts_with("ASV")) %>%
+  colnames()
+```
+
+```{r}
+temp1 <- asv_table %>%
+  select(2, all_of(polc_asvs)) %>%
+  group_by(taxon) %>%
+  summarise(across(ASV_05:ASV_35, sum, na.rm = TRUE)) %>%
+  t() %>%
+  as.data.frame()
+
+colnames(temp1) <- temp1[1,]  
+temp1 <- temp1[-1,]  
+
+temp2 <- temp1 %>%
+  mutate(across(everything(), as.numeric)) %>%
+  mutate(total = rowSums(across(where(is.numeric)))) %>%
+  mutate(prop = `Arctogadus glacialis`/total)
+```
+
+```{r}
+filtered <- temp2 %>%
+  filter(prop > 0.1) %>%    ## at least 10% of reads come from the target species
+  filter(total > 100) %>%          ## at least 100 reads 
+  rownames()
+```
+
+subset fasta
+```{r}
+# Load the necessary libraries
+library(Biostrings)
+
+# Define the input and output file paths
+fasta_file <- "/home/kimberly.ledger/GOA2021_mifish_mb/data/building_custom_gadid_salmon_db/filtered.seqs.fasta"
+output_file <- "/home/kimberly.ledger/GOA2021_mifish_mb/outputs/fastas_for_custom_db/arctogadus_glacialis.fasta"
+
+# Read the FASTA file
+fasta_seqs <- readDNAStringSet(fasta_file)
+
+# Filter the FASTA sequences based on the ASV headers
+seqs <- fasta_seqs[names(fasta_seqs) %in% filtered]
+
+# Write the filtered sequences to a new FASTA file
+writeXStringSet(seqs, filepath = output_file)
+```
+
+# Arctic cod
+
+pull out species that need seqs to be added to the ref db 
+```{r}
+ac <- asv_table %>%
+  filter(taxon == "Boreogadus saida") %>%
+  select(where(~ !is.numeric(.) || (is.numeric(.) && sum(.) > 0)))
+```
+
+are these asvs unique?
+```{r}
+ac_asvs <- ac %>%
+  select(starts_with("ASV")) %>%
+  colnames()
+```
+
+```{r}
+temp1 <- asv_table %>%
+  select(2, all_of(ac_asvs)) %>%
+  group_by(taxon) %>%
+  summarise(across(ASV_01:ASV_28, sum, na.rm = TRUE)) %>%
+  t() %>%
+  as.data.frame()
+
+colnames(temp1) <- temp1[1,]  
+temp1 <- temp1[-1,]  
+
+temp2 <- temp1 %>%
+  mutate(across(everything(), as.numeric)) %>%
+  mutate(total = rowSums(across(where(is.numeric)))) %>%
+  mutate(prop = `Boreogadus saida`/total)
+```
+
+```{r}
+filtered <- temp2 %>%
+  filter(prop > 0.1) %>%    ## at least 10% of reads come from the target species
+  filter(total > 100) %>%          ## at least 100 reads 
+  rownames()
+```
+
+subset fasta 
+```{r}
+# Load the necessary libraries
+library(Biostrings)
+
+# Define the input and output file paths
+fasta_file <- "/home/kimberly.ledger/GOA2021_mifish_mb/data/building_custom_gadid_salmon_db/filtered.seqs.fasta"
+output_file <- "/home/kimberly.ledger/GOA2021_mifish_mb/outputs/fastas_for_custom_db/boreogadus_saida.fasta"
+
+# Read the FASTA file
+fasta_seqs <- readDNAStringSet(fasta_file)
+
+# Filter the FASTA sequences based on the ASV headers
+seqs <- fasta_seqs[names(fasta_seqs) %in% filtered]
+
+# Write the filtered sequences to a new FASTA file
+writeXStringSet(seqs, filepath = output_file)
+```
+
+# Saffron cod
+
+pull out species that need seqs to be added to the ref db 
+```{r}
+sc <- asv_table %>%
+  filter(taxon == "Eleginus gracilis") %>%
+  select(where(~ !is.numeric(.) || (is.numeric(.) && sum(.) > 0)))
+```
+
+are these asvs unique?
+```{r}
+sc_asvs <- sc %>%
+  select(starts_with("ASV")) %>%
+  colnames()
+```
+
+```{r}
+temp1 <- asv_table %>%
+  select(2, all_of(sc_asvs)) %>%
+  group_by(taxon) %>%
+  summarise(across(ASV_12:ASV_24, sum, na.rm = TRUE)) %>%
+  t() %>%
+  as.data.frame()
+
+colnames(temp1) <- temp1[1,]  
+temp1 <- temp1[-1,]  
+
+temp2 <- temp1 %>%
+  mutate(across(everything(), as.numeric)) %>%
+  mutate(total = rowSums(across(where(is.numeric)))) %>%
+  mutate(prop = `Eleginus gracilis`/total)
+```
+
+```{r}
+filtered <- temp2 %>%
+  filter(prop > 0.1) %>%    ## at least 10% of reads come from the target species
+  filter(total > 100) %>%          ## at least 100 reads 
+  rownames()
+```
+
+subset fasta 
+```{r}
+# Load the necessary libraries
+library(Biostrings)
+
+# Define the input and output file paths
+fasta_file <- "/home/kimberly.ledger/GOA2021_mifish_mb/data/building_custom_gadid_salmon_db/filtered.seqs.fasta"
+output_file <- "/home/kimberly.ledger/GOA2021_mifish_mb/outputs/fastas_for_custom_db/eleginus_gracilis.fasta"
+
+# Read the FASTA file
+fasta_seqs <- readDNAStringSet(fasta_file)
+
+# Filter the FASTA sequences based on the ASV headers
+seqs <- fasta_seqs[names(fasta_seqs) %in% filtered]
+
+# Write the filtered sequences to a new FASTA file
+writeXStringSet(seqs, filepath = output_file)
+```
+
+
+# Tomcod
+
+pull out species that need seqs to be added to the ref db 
+```{r}
+tc <- asv_table %>%
+  filter(taxon == "Microgadus proximus") %>%
+  select(where(~ !is.numeric(.) || (is.numeric(.) && sum(.) > 0)))
+```
+
+are these asvs unique?
+```{r}
+tc_asvs <- tc %>%
+  select(starts_with("ASV")) %>%
+  colnames()
+```
+
+```{r}
+temp1 <- asv_table %>%
+  select(2, all_of(tc_asvs)) %>%
+  group_by(taxon) %>%
+  summarise(across(ASV_07:ASV_16, sum, na.rm = TRUE)) %>%
+  t() %>%
+  as.data.frame()
+
+colnames(temp1) <- temp1[1,]  
+temp1 <- temp1[-1,]  
+
+temp2 <- temp1 %>%
+  mutate(across(everything(), as.numeric)) %>%
+  mutate(total = rowSums(across(where(is.numeric)))) %>%
+  mutate(prop = `Microgadus proximus`/total)
+```
+
+```{r}
+filtered <- temp2 %>%
+  filter(prop > 0.1) %>%    ## at least 10% of reads come from the target species
+  filter(total > 100) %>%          ## at least 100 reads 
+  rownames()
+```
+
+subset fasta 
+```{r}
+# Load the necessary libraries
+library(Biostrings)
+
+# Define the input and output file paths
+fasta_file <- "/home/kimberly.ledger/GOA2021_mifish_mb/data/building_custom_gadid_salmon_db/filtered.seqs.fasta"
+output_file <- "/home/kimberly.ledger/GOA2021_mifish_mb/outputs/fastas_for_custom_db/microgadus_proximus.fasta"
+
+# Read the FASTA file
+fasta_seqs <- readDNAStringSet(fasta_file)
+
+# Filter the FASTA sequences based on the ASV headers
+seqs <- fasta_seqs[names(fasta_seqs) %in% filtered]
+
+# Write the filtered sequences to a new FASTA file
+writeXStringSet(seqs, filepath = output_file)
+```
+
+
+
+# Pink salmon
+
+pull out species that need seqs to be added to the ref db 
+```{r}
+ogor <- asv_table %>%
+  filter(taxon == "Oncorhynchus gorbuscha") %>%
+  select(where(~ !is.numeric(.) || (is.numeric(.) && sum(.) > 0)))
+```
+
+are these asvs unique?
+```{r}
+ogor_asvs <- ogor %>%
+  select(starts_with("ASV")) %>%
+  colnames()
+```
+
+```{r}
+temp1 <- asv_table %>%
+  select(2, all_of(ogor_asvs)) %>%
+  group_by(taxon) %>%
+  summarise(across(ASV_01:ASV_26, sum, na.rm = TRUE)) %>%
+  t() %>%
+  as.data.frame()
+
+colnames(temp1) <- temp1[1,]  
+temp1 <- temp1[-1,]  
+
+temp2 <- temp1 %>%
+  mutate(across(everything(), as.numeric)) %>%
+  mutate(total = rowSums(across(where(is.numeric)))) %>%
+  mutate(prop = `Oncorhynchus gorbuscha`/total)
+```
+
+```{r}
+filtered <- temp2 %>%
+  filter(prop > 0.1) %>%    ## at least 10% of reads come from the target species
+  filter(total > 100) %>%          ## at least 100 reads 
+  rownames()
+```
+
+subset fasta 
+```{r}
+# Load the necessary libraries
+library(Biostrings)
+
+# Define the input and output file paths
+fasta_file <- "/home/kimberly.ledger/GOA2021_mifish_mb/data/building_custom_gadid_salmon_db/filtered.seqs.fasta"
+output_file <- "/home/kimberly.ledger/GOA2021_mifish_mb/outputs/fastas_for_custom_db/oncorhynchus_gorbuscha.fasta"
+
+# Read the FASTA file
+fasta_seqs <- readDNAStringSet(fasta_file)
+
+# Filter the FASTA sequences based on the ASV headers
+seqs <- fasta_seqs[names(fasta_seqs) %in% filtered]
+
+# Write the filtered sequences to a new FASTA file
+writeXStringSet(seqs, filepath = output_file)
+```
+
+
+# Chum salmon
+
+pull out species that need seqs to be added to the ref db 
+```{r}
+oketa <- asv_table %>%
+  filter(taxon == "Oncorhynchus keta") %>%
+  select(where(~ !is.numeric(.) || (is.numeric(.) && sum(.) > 0)))
+```
+
+are these asvs unique?
+```{r}
+oketa_asvs <- oketa %>%
+  select(starts_with("ASV")) %>%
+  colnames()
+```
+
+```{r}
+temp1 <- asv_table %>%
+  select(2, all_of(oketa_asvs)) %>%
+  group_by(taxon) %>%
+  summarise(across(ASV_03:ASV_20, sum, na.rm = TRUE)) %>%
+  t() %>%
+  as.data.frame()
+
+colnames(temp1) <- temp1[1,]  
+temp1 <- temp1[-1,]  
+
+temp2 <- temp1 %>%
+  mutate(across(everything(), as.numeric)) %>%
+  mutate(total = rowSums(across(where(is.numeric)))) %>%
+  mutate(prop = `Oncorhynchus keta`/total)
+```
+
+```{r}
+filtered <- temp2 %>%
+  filter(prop > 0.1) %>%    ## at least 10% of reads come from the target species
+  filter(total > 100) %>%          ## at least 100 reads 
+  rownames()
+```
+
+subset fasta 
+```{r}
+# Load the necessary libraries
+library(Biostrings)
+
+# Define the input and output file paths
+fasta_file <- "/home/kimberly.ledger/GOA2021_mifish_mb/data/building_custom_gadid_salmon_db/filtered.seqs.fasta"
+output_file <- "/home/kimberly.ledger/GOA2021_mifish_mb/outputs/fastas_for_custom_db/oncorhynchus_keta.fasta"
+
+# Read the FASTA file
+fasta_seqs <- readDNAStringSet(fasta_file)
+
+# Filter the FASTA sequences based on the ASV headers
+seqs <- fasta_seqs[names(fasta_seqs) %in% filtered]
+
+# Write the filtered sequences to a new FASTA file
+writeXStringSet(seqs, filepath = output_file)
+```
+
+
+# Sockeye salmon
+
+pull out species that need seqs to be added to the ref db 
+```{r}
+oner <- asv_table %>%
+  filter(taxon == "Oncorhynchus nerka") %>%
+  select(where(~ !is.numeric(.) || (is.numeric(.) && sum(.) > 0)))
+```
+
+are these asvs unique?
+```{r}
+oner_asvs <- oner %>%
+  select(starts_with("ASV")) %>%
+  colnames()
+```
+
+```{r}
+temp1 <- asv_table %>%
+  select(2, all_of(oner_asvs)) %>%
+  group_by(taxon) %>%
+  summarise(across(ASV_02:ASV_27, sum, na.rm = TRUE)) %>%
+  t() %>%
+  as.data.frame()
+
+colnames(temp1) <- temp1[1,]  
+temp1 <- temp1[-1,]  
+
+temp2 <- temp1 %>%
+  mutate(across(everything(), as.numeric)) %>%
+  mutate(total = rowSums(across(where(is.numeric)))) %>%
+  mutate(prop = `Oncorhynchus nerka`/total)
+```
+
+```{r}
+filtered <- temp2 %>%
+  filter(prop > 0.1) %>%    ## at least 10% of reads come from the target species
+  filter(total > 100) %>%          ## at least 100 reads 
+  rownames()
+```
+
+subset fasta
+```{r}
+# Load the necessary libraries
+library(Biostrings)
+
+# Define the input and output file paths
+fasta_file <- "/home/kimberly.ledger/GOA2021_mifish_mb/data/building_custom_gadid_salmon_db/filtered.seqs.fasta"
+output_file <- "/home/kimberly.ledger/GOA2021_mifish_mb/outputs/fastas_for_custom_db/oncorhynchus_nerka.fasta"
+
+# Read the FASTA file
+fasta_seqs <- readDNAStringSet(fasta_file)
+
+# Filter the FASTA sequences based on the ASV headers
+seqs <- fasta_seqs[names(fasta_seqs) %in% filtered]
+
+# Write the filtered sequences to a new FASTA file
+writeXStringSet(seqs, filepath = output_file)
+```
+
+
+## closer looks at ASV4 
+pull out species that need seqs to be added to the ref db 
+```{r}
+temp <- asv_table %>%
+  filter(taxon == "Gadus chalcogrammus" | taxon == "Gadus macrocephalus") %>%
+  select(where(~ !is.numeric(.) || (is.numeric(.) && sum(.) > 0)))
+
+gadus_asvs <- temp %>%
+  select(starts_with("ASV")) %>%
+  colnames()
+```
+
+```{r}
+temp1 <- asv_table %>%
+  select(1, 2, gadus_asvs) %>%
+  mutate(across(c(4:20), as.numeric)) %>%
+  mutate(total = rowSums(across(where(is.numeric)))) %>%
+  mutate(prop_asv4 = ASV_04/total) %>%
+  filter(prop_asv4 > 0.01)
+
+asv_table %>%
+  filter(taxon == "Gadus chalcogrammus")
+
+asv_table %>%
+  filter(taxon == "Gadus macrocephalus")
+```
+
+2/16 wp have asv 4 and only 1 has it as the dominate ASV (15285) - this individual was collected in Little Port Walter along with other pollock - some of which were included in this test and all came back as pollock. 
+
+8/16 pc have asv 4 and they are all the dominate ASV
+
+
+
+add ASV 19 and ASV20 for ref db as O. keta 
+add ASV 18 and ASV 22 to ref db for O. gorbuscha
+
+
+
+
