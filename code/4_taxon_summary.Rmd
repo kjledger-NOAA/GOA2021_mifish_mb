@@ -1,0 +1,124 @@
+---
+title: "make taxon table"
+output: html_document
+date: "2026-04-13"
+---
+
+libraries
+```{r}
+library(tidyverse)
+library(here)
+library(ggplot2)
+#devtools::install_github("thomasp85/scico")
+library(scico)
+library(vegan)
+library(reshape2)
+```
+
+load decontaminated ASV table 
+```{r}
+asv_table <- readRDS(here("data", "decontaminated_asv_table.RDS"))
+```
+
+
+convert to taxon table
+make a few additional taxon edits to not have nested assignments 
+and remove any remaining pc reads 
+```{r}
+taxon_table <- asv_table %>%
+  filter(taxon != "Acipenser fulvescens") %>% 
+  mutate(taxon = ifelse(taxon == "Ammodytes", "Ammodytes personatus", taxon),
+         taxonomic_level = ifelse(taxon == "Ammodytes personatus", "species", taxonomic_level),
+         species = ifelse(taxon == "Ammodytes personatus", "Ammodytes personatus", species),
+         taxon = ifelse(taxon == "Pholis", "Pholis laeta", taxon),
+         taxonomic_level = ifelse(taxon == "Pholis laeta", "species", taxonomic_level),
+         species = ifelse(taxon == "Pholis laeta", "Pholis laeta", species),
+         taxon = ifelse(taxon == "Anoplarchus purpurescens", "Anoplarchus", taxon),
+         taxonomic_level = ifelse(taxon == "Anoplarchus", "genus", taxonomic_level),
+         species = ifelse(taxon == "Anoplarchus", NA, species), 
+         taxon = ifelse(taxon == "Salmonidae", "Salvelinus", taxon),
+         taxonomic_level = ifelse(taxon == "Salvelinus", "genus", taxonomic_level),
+         genus = ifelse(taxon == "Salvelinus", "Salvelinus", genus),
+         taxon = ifelse(taxon == "Sebastes auriculatus", "Sebastes", taxon),
+         taxonomic_level = ifelse(taxon == "Sebastes", "genus", taxonomic_level),
+         species = ifelse(taxon == "Sebastes", NA, species),
+         taxon = ifelse(taxon == "Sebastes nebulosus", "Sebastes", taxon),
+         taxonomic_level = ifelse(taxon == "Sebastes", "genus", taxonomic_level),
+         species = ifelse(taxon == "Sebastes", NA, species), 
+         taxon = ifelse(taxon == "Hexagrammos stelleri", "Hexagrammos", taxon),
+         taxonomic_level = ifelse(taxon == "Hexagrammos", "genus", taxonomic_level),
+         species = ifelse(taxon == "Hexagrammos", NA, species)) %>%
+  group_by(Sample_ID, taxon, taxonomic_level, species, genus, family, order, class) %>%
+  summarize(reads = sum(reads)) %>%
+  filter(reads > 0) %>%
+  filter(!taxon %in% c("Perciformes", "Pleuronectidae", "Cottidae", "Blepsias", "Stichaeidae", "Agonidae_2", "Gadidae_1", "Gadus",
+                       "Pleuronectidae_2", "Oncorhynchus")) 
+
+taxon_table_summary <- taxon_table %>%
+  group_by(taxon, species, genus, family, order) %>%
+  summarize(total_reads = sum(reads),
+            n_tech = n_distinct(Sample_ID)) %>%
+  arrange(taxon)
+```
+
+
+load sample metadata
+```{r}
+metadata <- read.csv(here("data/GOA2021_metadata_20241107.csv"))
+
+#illumina output changed "_" to "-"
+metadata$Sample_ID <- gsub("_", "-", metadata$Sample_ID) 
+```
+
+join to metadata 
+```{r}
+taxon_df <- metadata %>%
+  select(-extraction_date, -plate_or_vial, -extraction_plate, -extraction_well, -dna_conc, -pcr_conc, -pcr_replicate) %>%
+  filter(sample_type == "sample") %>% 
+  left_join(taxon_table, by = "Sample_ID")
+```
+
+```{r}
+#write.csv(taxon_df, here("outputs", "taxon_df_long.csv"), row.names = F)
+```
+
+convert to wide df 
+```{r}
+taxon_df_wide <- taxon_df %>%
+  select(-taxonomic_level, -species, -genus, -family, -order, -class) %>%
+  group_by(Sample_ID) %>%
+  mutate(Total = sum(reads),
+         Prop = reads/Total) %>%
+  select(-reads, - Total) %>%
+  pivot_wider(names_from = "taxon", values_from = "Prop", values_fill = 0)
+```
+
+
+```{r}
+#write.csv(taxon_df_wide, here("outputs", "taxon_df_wide.csv"), row.names = F)
+
+taxon_df_wide %>%
+  ungroup() %>%
+  mutate(row_sum = rowSums(across(-c(Sample_ID, biological_replicate, extraction_ID, extraction_replicate, run, collection_year, collection_month, collection_day, location1, longitude, latitude, sample_type, time_of_day)), na.rm = TRUE))
+```
+
+
+```{r}
+all_df <- taxon_df %>% 
+  select(taxon, taxonomic_level) %>% 
+  unique() 
+
+not_spp <- all_df %>% filter(taxonomic_level != "species")
+
+uncollapsed_taxonomy <- read.csv(here("data", "uncollapsed_taxonomy.csv")) %>% select(!X)
+
+not_spp_df <- uncollapsed_taxonomy %>%
+  select(taxon, taxonomic_level, species) %>%
+  filter(taxon %in% not_spp$taxon) %>% 
+  unique() %>%
+  arrange(taxon)
+
+#write.csv(not_spp_df, here("outputs", "taxon_list.csv"), row.names = F)
+```
+
+
